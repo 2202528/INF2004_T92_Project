@@ -30,13 +30,15 @@ void configureMagnetometer() {
     sleep_ms(10);
 }
 
-void readMagnetoMeterData() {
+void readMagnetoMeterData() { //read magnetometer data
     uint8_t magnetoAddress=0x1E;
     uint8_t magnetoDataReg=0x03;
 
-    if(i2c_write_blocking(i2c0, magnetoAddress, &magnetoDataReg, 1, true) !=PICO_ERROR_GENERIC) {
+    if(i2c_write_blocking(i2c0, magnetoAddress, &magnetoDataReg, 1, true) !=PICO_ERROR_GENERIC) { //will send a msg to mag addr and wants data from datareg
+    //reg will hold first x value in the magnetometer
         uint8_t magnetoData[6]={0};
-        if(i2c_read_blocking(i2c0, magnetoAddress, magnetoData, 6, false) !=PICO_ERROR_GENERIC) {
+        if(i2c_read_blocking(i2c0, magnetoAddress, magnetoData, 6, false) !=PICO_ERROR_GENERIC) { //reads data 
+        //takes the datareg + next  6 bytes 
             int16_t x = (magnetoData[0] << 8) | magnetoData[1];
             int16_t y = (magnetoData[2] << 8) | magnetoData[3];
             int16_t z = (magnetoData[4] << 8) | magnetoData[5];
