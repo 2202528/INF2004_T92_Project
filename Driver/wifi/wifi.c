@@ -23,13 +23,24 @@
 
 static MessageBufferHandle_t xControlMessageBuffer;
 
+/**
+ * @brief Main task function.
+ * 
+ * This task handles initialization of the CYW43 WiFi module, connects to a WiFi network,
+ * and executes WiFi communication code in an infinite loop.
+ */
 void main_task(__unused void *params) {
+    // Initialize CYW43 WiFi module
     if (cyw43_arch_init()) {
         printf("failed to initialise\n");
         return;
     }
+
+    // Set WiFi module to station mode
     cyw43_arch_enable_sta_mode();
     printf("Connecting to Wi-Fi...\n");
+
+    // Connect to WiFi network
     if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
         printf("failed to connect.\n");
         exit(1);
@@ -37,9 +48,10 @@ void main_task(__unused void *params) {
         printf("Connected.\n");
     }
 
+    // Main loop for WiFi communication
     while (true) {
         // Your main code for WiFi communication goes here
-
+        
         // Example: Sending a message
         char message_to_send[] = "Hello, Pico!"; // Message to send
 
@@ -51,10 +63,13 @@ void main_task(__unused void *params) {
         );
     }
 
+    // Deinitialize CYW43 WiFi module (This is never reached in this code)
     cyw43_arch_deinit();
 }
 
-/* A Task that waits for data from the PC/Laptop via message buffer. */
+/**
+ * @brief Task that waits for data from the PC/Laptop via message buffer.
+ */
 void pc_task(__unused void *params) {
     char received_message[64]; // Buffer to store received messages
 
@@ -86,7 +101,9 @@ void pc_task(__unused void *params) {
     }
 }
 
-
+/**
+ * @brief Function to create and launch tasks.
+ */
 void vLaunch(void) {
     TaskHandle_t task;
     xTaskCreate(main_task, "TestMainThread", configMINIMAL_STACK_SIZE, NULL, TEST_TASK_PRIORITY, &task);
@@ -99,6 +116,9 @@ void vLaunch(void) {
     vTaskStartScheduler();
 }
 
+/**
+ * @brief Main function.
+ */
 int main(void) {
     stdio_init_all();
 
