@@ -4,8 +4,8 @@
 #include "hardware/timer.h"
 
 int timeout = 30000; // Increase the timeout to handle longer distances
-#define TRIGGER_PIN 4
-#define ECHO_PIN 5
+#define TRIGGER_PIN 4 //trigger pin number
+#define ECHO_PIN 5 //echopin number
 
 uint64_t getPulse(uint trigPin, uint echoPin)
 {
@@ -19,7 +19,7 @@ uint64_t getPulse(uint trigPin, uint echoPin)
     absolute_time_t startTime = get_absolute_time();
     while (gpio_get(echoPin) == 1)
     {
-        width++;
+        width++; //measure the duration of the echopulse
         sleep_us(1);
         if (width > timeout)
             return 0;
@@ -31,12 +31,12 @@ uint64_t getPulse(uint trigPin, uint echoPin)
 
 float getDistance(uint triggerPin, uint echoPin)
 {
-    uint64_t pulseLength = getPulse(triggerPin, echoPin);
+    uint64_t pulseLength = getPulse(triggerPin, echoPin); //returns legnth of time btw trig and echo
     if (pulseLength == 0)
         return -1.0; // Error condition
 
     // Calculate the distance in centimeters
-    float dist = (float)pulseLength / 29 /2; // Speed of sound in air = 343 m/s
+    float dist = (float)pulseLength / 29 /2; 
 
     return dist;
 }
