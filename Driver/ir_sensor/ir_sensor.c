@@ -1,49 +1,445 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
-#include "hardware/adc.h"
-#include "hardware/pwm.h"
-#include <ctype.h>
+#include "hardware/timer.h"
 
-//Pins
-#define IR_SENSOR_PIN 26
-
-//Thresholds for White and Black Surface
-#define WHITE_THRESHOLD 400 
+#define GPIO_PIN 26
+#define WHITE_THRESHOLD 400
 #define BLACK_THRESHOLD 3000
 
-//Define Barcode Size
-#define BARCODE_SIZE 47
+//Number of switches between black and white before timer reset
+#define INTERRUPT_LIMIT 30
+#define CHAR_LEN 29
 
-//Define for sensor value
-uint16_t sensorValue;
+uint32_t edgeRise = 0x8u;
+uint32_t edgeFall = 0x4u;
 
-char* barcodeStr[BARCODE_SIZE + 1];
+uint startTime = 0;
+uint runningTime = 0;
 
-//Boolean to see if bar sensed
-bool isBlackBar = false;
-////Boolean if barcode is currently sensing;
-bool sensingBarcode = false;
-//Barcode Array Count
-int barcodeCount = 0;
+//Falling Edge = Black Start, White End
+//Rising Edge = White Start, Black End
 
-absolute_time_t startBarcodeTime;
-absolute_time_t endBarcodeTime;
+int barcodeArray[CHAR_LEN]
+= {0,0,0,0,0,0,0,0,0,
+0,
+0,0,0,0,0,0,0,0,0,
+0,
+0,0,0,0,0,0,0,0,0}
 
-uint32_t startTime;
-uint32_t endTime;
-uint32_t pulseWidth;
-//Timing Array
-//[0] = pulsewidth
-//[1] = black/white
+uint32_t barcodeTimings[CHAR_LEN][];
+//barcodeTimings[i][0] = black or white
+//Black = 1, White = 0
+//barcodeTimings[i][1] = timing;
+uint32_t barcodeIndex = 0;
+//int interruptNum = 0;
 
-uint32_t threshold;
+//Stopwatch will run at the first bar, will end at end of barcode
+volatile bool stopwatchRunning = false;
+volatile bool readingBarcode = false;
+volatile bool completeBarcode = false;
 
-const int barLetterA[BARCODE_SIZE] = {1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1};
+//Thick  Bar = 3
+//Thin  Bar = 1
+//A = 3 1 1 1 1 3 1 1 3
+//* = 1 3 1 1 3 1 3 1 1
 
-void sortArray(uint32_t arr[][2], int size) {
-    for (int i = 0; i < size - 1; i++) {
-        for (int j = 0; j < size - i - 1; j++) {
+//Thin White Bar = 0
+//Thin Black Bar = 1
+//Thick White Bar = 2
+//Thin White Bar = 3
+
+const int barLetterA[INTERRUPT_LIMIT - 1] 
+= {1,2,1,0,3,0,3,0,1,
+0,
+3,0,1,0,1,2,1,0,3,
+0,
+1,2,1,0,3,0,3,0,1}
+
+//THIN-WHITE: 0 (Binary:0)
+//THIN-BLACK: 1 (Binary:1)
+//THICK-WHITE: 2 (Binary: 000)
+//THICK-BLACK: 3 (Binary: 111)
+
+typedef struct{
+        int letter[CHAR_LEN];
+} BarLetter;
+
+//0-25, size = 26
+enum BarLetters{
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+        I,
+        J,
+        K,
+        L,
+        M,
+        N,
+        O,
+        P,
+        Q,
+        R,
+        S,
+        T,
+        U,
+        V,
+        W,
+        X,
+        Y,
+        Z
+}
+
+BarLetter barLetters[]{
+    //* = 1 000 1 0 111 0 111 0 1
+    //* = 1 2   1 0 3   0 3   0 1  
+
+    //111 0 1 0 1 000 1 0 111  
+    //3   0 1 0 1 2   1 0 3
+
+    //A
+        {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,1,0,1,2,1,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+        },
+
+    //1 0 111 0 1 000 1 0 111
+    //1 0 3   0 1 2   1 0 3 
+
+    //B
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,3,0,1,2,1,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 111 0 1 000 1 0 1  
+    //3   0 3   0 1 2   1 0 1
+    //C
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,3,0,1,2,1,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 1 0 111 000 1 0 111
+    //1 0 1 0 3   2   1 0 3
+    //D
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,1,0,3,2,1,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 1 0 111 000 1 0 1
+    //3   0 1 0 3   2   1 0 1
+    //E
+        {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,1,0,3,2,1,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 111 0 111 000 1 0 1 
+    //1 0 3   0 3   2   1 0 1
+    //F = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,3,0,3,2,1,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 1 0 1 000 111 0 111
+    //1 0 1 0 1 2   3   0 3
+    //G = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,1,0,1,2,3,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 1 0 1 000 111 0 1
+    //3   0 1 0 1 2   3   0 1
+    //H = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,1,0,1,2,3,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 111 0 1 000 111 0 1
+    //1 0 3   0 1 2   3   0 1 
+    //I = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,3,0,1,2,3,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 1 0 111 000 111 0 1
+    //1 0 1 0 3   2   3   0 1
+    //J = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,1,0,3,2,3,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 1 0 1 0 1 000 111
+    //3   0 1 0 1 0 1 2   3 
+    //K = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,1,0,1,0,1,2,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 111 0 1 0 1 000 111
+    //1 0 3   0 1 0 1 2   3
+    //L = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,3,0,1,0,1,2,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 111 0 1 0 1 000 1
+    //3   0 3   0 1 0 1 2   1 
+    //M = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,3,0,1,0,1,2,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 1 0 111 0 1 000 111 
+    //1 0 1 0 3   0 1 2   3
+    //N = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,1,0,3,0,1,2,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 1 0 111 0 1 000 1
+    //3   0 1 0 3   0 1 2   1
+    //O = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,1,0,3,0,1,2,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 111 0 111 0 1 000 1 
+    //1 0 3   0 3   0 1 2   1
+    //P = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,3,0,3,0,1,2,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 1 0 1 0 111 000 111
+    //1 0 1 0 1 0 3   2   3
+    //Q = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,1,0,1,0,3,2,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 0 1 0 1 0 111 000 1
+    //3   0 1 0 1 0 3   2   1 
+    //R = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,0,1,0,1,0,3,2,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 111 0 1 0 111 000 1
+    //1 0 3   0 1 0 3   2   1
+    //S = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,3,0,1,0,3,2,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 0 1 0 111 0 111 000 1 
+    //1 0 1 0 3   0 3   2   1
+    //T = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,0,1,0,3,0,3,2,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 000 1 0 1 0 1 0 111
+    //3   2   1 0 1 0 1 0 3 
+    //U = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,2,1,0,1,0,1,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 000 111 0 1 0 1 0 111
+    //1 2   3   0 1 0 1 0 3   
+    //V = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,2,3,0,1,0,1,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 000 111 0 1 0 1 0 1
+    //3   2   3   0 1 0 1 0 1 
+    //W = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,2,3,0,1,0,1,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 000 1 0 111 0 1 0 111
+    //1 2   1 0 3   0 1 0 3
+    //X = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,2,1,0,3,0,1,0,3,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //111 000 1 0 111 0 1 0 1
+    //3   2   1 0 3   0 1 0 1 
+    //Y = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            3,2,1,0,3,0,1,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    },
+
+    //1 000 111 0 111 0 1 0 1 
+    //1 2   3   0 3   0 1 0 1
+    //Z = 
+    {1,2,1,0,3,0,3,0,1,
+            0,
+            1,2,3,0,3,0,1,0,1,
+            0,
+            1,2,1,0,3,0,3,0,1
+    }
+}
+
+char barLetterToChar(enum BarLetters letter){
+        switch (letter)
+        {
+        case A: return "A";
+        case B: return "B";
+        case C: return "C";
+        case D: return "D";
+        case E: return "E";
+        case F: return "F";
+        case G: return "G";
+        case H: return "H";
+        case I: return "I";
+        case J: return "J";
+        case K: return "K";
+        case L: return "L";
+        case M: return "M";
+        case N: return "N";
+        case O: return "O";
+        case P: return "P";
+        case Q: return "Q";
+        case R: return "R";
+        case S: return "S";
+        case T: return "T";
+        case U: return "U";
+        case V: return "V";
+        case W: return "W";
+        case X: return "X";
+        case Y: return "Y";
+        case Z: return "Z";
+        }
+}
+ 
+
+enum BarLetters barcodeMatch(int array[CHAR_LEN]) {
+
+    for (int i = 0; i < sizeof(barLetters) / sizeof(barLetters[0]); i++) {
+
+        int matchCount = 0;
+        for (int j = 0; j < sizeof(barLetters[i].values) / sizeof(barLetters[i].values[0]); j++) {
+            if (barLetters[i].values[j] == inputArray[j]) {
+                matchCount++;
+            }
+        }
+
+        if (matchCount == sizeof(barLetters[i].values) / sizeof(barLetters[i].values[0])) {
+            return (enum BarLetters)i;
+        }
+    }
+
+
+    return (enum BarLetters)-1;
+}
+
+
+char readBarcode(int array[CHAR_LEN]){
+        BarLetters letter = barcodeMatch(array);
+        if(letter == -1){
+                return "1";
+        }
+        else{
+                char barChar = barLetterToChar(letter);
+                return barChar;
+        }
+}
+
+void copyArray(uint32_t original[CHAR_LEN][], uint32_t copy[CHAR_LEN][]){
+        int len = CHAR_LEN;
+        int col = 2;
+        for(int i = 0; i < len; i++){
+                for(int j = 0; j < col; j++){
+                        copy[i][j] = original[i][j];
+                }
+        }
+}
+
+void sortArray(uint32_t arr[CHAR_LEN][]) {
+    for (int i = 0; i < CHAR_LEN - 1; i++) {
+        for (int j = 0; j < CHAR_LEN - i - 1; j++) {
             if (arr[j][0] > arr[j + 1][0]) {
                 int temp1 = arr[j][0];
                 int temp2 = arr[j][1];
@@ -58,279 +454,257 @@ void sortArray(uint32_t arr[][2], int size) {
     }
 }
 
+uint32_t findThreshold(uint32_t arr[CHAR_LEN][] ){
+    int len = CHAR_LEN;
+    sortArray(arr); // Sort the array in ascending order
 
-uint32_t findThreshold(uint32_t arr[][2], int size) {
-    sortArray(arr, size); // Sort the array in ascending order
+    uint32_t timings[len];
 
-    uint32_t timings[size];
-
-    for(int i = 0; i < size; i++){
+    for(int i = 0; i < CHAR_LEN; i++){
         timings[i] = arr[i][0];
     }
 
-    if (size % 2 == 0) {
-        return (timings[size / 2 - 1] + timings[size / 2]) / 2;
+    if (len % 2 == 0) {
+        return (timings[len / 2 - 1] + timings[len / 2]) / 2;
     } else {
-        return timings[size / 2];
+        return timings[len / 2];
     }
 }
 
-int* processBarcode(uint32_t array[][2], int size){
-    uint32_t median = findThreshold(array, size);
-    int barcode[BARCODE_SIZE];
-    int i = 0;
-    while (true)
-    {
-        if(i <= 47){
-            //If White
-            if(array[i][1] == 0){
-                if(array[i][0] < median){
-                    //Thin
-                    barcode[i] = 0;
-                    i++;
-                    continue;
+//To Process Array, first must check if considered long and short timings
+//Then check if considered thin or thick bars and what colour
+//Then can assign number 0-3 to the specific bar/array timing
+void processArray(uint32_t array[CHAR_LEN][], int barcodeArr[CHAR_LEN]){
+        int barArray[CHAR_LEN];
+        uint32_t copy[CHARLEN][];
+        copyArray(array, copy);
+        uint32_t median = findThreshold(copy);
+
+        for(int i = 0; i < CHAR_LEN; i++){
+                //If White
+                if(array[i][0] == 0){
+                        //Thin White
+                        if(array[i][1] < median){
+                                barcodeArr[i] = 0;
+                        }
+                        //Thick White
+                        else{
+                                barcodeArr[i] = 2;
+                        }
+                }
+                //If Black
+                else if(array[i][0] == 1){
+                        //Thin Black
+                        if(array[i][1] < median){
+                                barcodeArr[i] = 1;
+                        }
+                        //Thick Black
+                        else{
+                                barcodeArr[i] = 3;
+                        }
+                }
+        }
+}
+
+
+//0-29
+
+//*A* = 1 2 1 0 3 0 3 0 1 (*)
+//0 
+//3 0 1 0 1 2 1 0 3 
+//0 
+//1 2 1 0 3 0 3 0 1 
+//0
+
+//A = 
+//* = 1 2 1 0 3 
+//* = 1 000 1 0 111 0 111 0 1 0
+
+//*A* 121030301 0 301012103 0 121030301 (missing 0 as stopwatch ends) (29 characters)
+
+void gpio_callback(uint gpio, uint32_t events){
+    // Put the GPIO event(s) that just happened into event_str
+    // so we can print it
+    //uint32_t edgeRise = 0x8u;
+    //uint32_t edgeFall = 0x4u;
+
+    //The first interrupt is falling edge from HIGH to LOW
+    //The last interrupt is rising edge from LOW back to HIGH
+
+    
+
+    if(events == edgeFall && readingBarcode == false){
+        //FROM HIGH TO LOW
+        //From White to Black
+        //Black Timing Starts
+        //Barcode reading starts
+        readingBarcode = true;
+        printf("Barcode Reading Started\n");
+        //interruptNum = 0;
+        //interruptNum = interruptNum + 1;
+        startTime = to_ms_since_boot(get_absolute_time());
+    }
+    else if(events == edgeFall && readingBarcode == true){
+        //FROM HIGH TO LOW
+        //From White to Black
+        //White Timing Ends
+        //Black Timing Starts
+        if(stopwatchRunning){
+            runningTime = to_ms_since_boot(get_absolute_time());
+            barcodeTimings[barcodeIndex][0] = 0;
+            barcodeTimings[barcodeIndex][1] = runningTime - startTime;
+            startTime = runningTime;
+            printf("Barcode Timing %d Saved!\n", barcodeIndex+1);
+            printf("Barcode Bar is White!\n");
+            barcodeIndex++;
+
+        //     if(barcodeIndex => 30){
+        //         stopwatchRunning = false;
+        //         barcodeIndex = 0;
+                
+        //     }
+        // }
+        }
+
+    }
+    else if(events == edgeRise && readingBarcode == true){
+        //check InterruptNum or timingindex
+        //FROM LOW TO HIGH
+        //From Black to White
+        //Black Timing Ends
+        //White Timing Starts
+        if(stopwatchRunning){
+            runningTime = to_ms_since_boot(get_absolute_time());
+            barcodeTimings[barcodeIndex][0] = 1;
+            barcodeTimings[barcodeIndex][1] = runningTime - startTime;
+            startTime = runningTime;
+                printf("Barcode Timing %d Saved!\n", barcodeIndex+1);
+            printf("Barcode Bar is Black!\n");
+            barcodeIndex++;
+
+            if(barcodeIndex == CHAR_LEN){
+                stopwatchRunning = false;
+                readingBarcode = false;
+                completeBarcode = true;
+
+                processArray(barcodeTimings, barcodeArray);
+                char data = readBarcode(barcodeArray);
+                if(data == "1"){
+                        printf("Error reading barcode. Try again!\n");
                 }
                 else{
-                    //Thick
-                    for (int j = 0; j < 3; j++)
-                    {
-                        barcode[i] = 0;
-                        i++;
-                    }
-                    continue;
+                        printf("The alphabet letter read was: %c\n", data);
                 }
+                
+                barcodeIndex = 0;
+                
+                
             }
-            //If Black
-            else if(array[i][1] == 1){
-                if(array[i][0] < median){
-                    //Thin
-                    barcode[i] = 1;
-                    i++;
-                    continue;
-                }
-                else{
-                    //Thick
-                    for (int j = 0; j < 3; j++)
-                    {
-                        barcode[i] = 1;
-                        i++;
-                    }
-                    continue;
-                }
-            }
+            //interruptNum++;
         }
-        else{
-            break;
-        }
+
+        
     }
     
-    return barcode;
 }
 
-int checkIfA(int barCode[], int barLetter[BARCODE_SIZE]){
-    for(int i = 0; i < BARCODE_SIZE; i++ ){
-        if(barCode[i] != barLetter[i]){
-            return 1;
-        }
-    }
+// int64_t alarm_callback(alarm_id_t id, void *user_data) {
+//     printf("Timer %d fired!\n", (int) id);
+//     timer_fired = true;
+//     // Can return a value here in us to fire in the future
+//     return 0;
+// }
 
-    return 0;
-}
+// bool repeating_timer_callback(struct repeating_timer *t) {
+//     printf("Repeat at %lld\n", time_us_64());
+//     return true;
+// }
 
-
-int checkSurfaceColour(uint16_t data){
-    if(data <= WHITE_THRESHOLD){
-        //Surface is white 
-        printf("0\n");
-        return 0;
-    }
-    else if(data >= BLACK_THRESHOLD){
-        //Surface is black
-        printf("1\n");
-        return 1;
-    }
-    return 0;
-}
-
-int checkWidth(uint32_t pulse, uint32_t threshold){
-    //Thin = 0
-    //Thick = 1
-    if(pulse > threshold){
-        return 0;
-    }
-    else{
-        return 1;
-    }
-
-}
-
-int main(void) {
-
-    //Set up ADC Pin for IR Sensor
+int main() {
     stdio_init_all();
-    adc_init();
 
-    adc_gpio_init(IR_SENSOR_PIN);
-    adc_select_input(0);
+    printf("Hello GPIO IRQ\n");
+    printf("Hello Timer!\n");
 
-    gpio_set_dir_all_bits(0);
-    for (int i = 2; i < 30; ++i) {
-        gpio_set_function(i, GPIO_FUNC_SIO);
-        if (i >= 26) {
-            gpio_disable_pulls(i);
-            gpio_set_input_enabled(i, false);
+    gpio_set_dir(GPIO_PIN, GPIO_IN);
+    gpio_set_pulls(GPIO_PIN, true, false);
+
+    //Rising Edge / Edge Rise = 0x8u
+    //Falling Edge / Edge Fall = 0x4u
+
+    gpio_set_irq_enabled_with_callback(GPIO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    //gpio_set_irq_enabled_with_callback(GPIO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    // // Call alarm_callback in 2 seconds
+    // add_alarm_in_ms(2000, alarm_callback, NULL, false);
+
+    // // Wait for alarm callback to set timer_fired
+    // while (!timer_fired) {
+    //     tight_loop_contents();
+    // }
+
+    // // Create a repeating timer that calls repeating_timer_callback.
+    // // If the delay is > 0 then this is the delay between the previous callback ending and the next starting.
+    // // If the delay is negative (see below) then the next call to the callback will be exactly 500ms after the
+    // // start of the call to the last callback
+    // struct repeating_timer timer;
+    // add_repeating_timer_ms(500, repeating_timer_callback, NULL, &timer);
+    // sleep_ms(3000);
+    // bool cancelled = cancel_repeating_timer(&timer);
+    // printf("cancelled... %d\n", cancelled);
+    // sleep_ms(2000);
+
+    // // Negative delay so means we will call repeating_timer_callback, and call it again
+    // // 500ms later regardless of how long the callback took to execute
+    // add_repeating_timer_ms(-500, repeating_timer_callback, NULL, &timer);
+    // sleep_ms(3000);
+    // cancelled = cancel_repeating_timer(&timer);
+    // printf("cancelled... %d\n", cancelled);
+    // sleep_ms(2000);
+    // printf("Done\n");
+    // return 0;
+    
+    
+
+    // Wait forever
+    while (1){
+        if(!stopwatchRunning && readingBarcode == false){
+            stopwatchRunning = true;
+            barcodeIndex = 0;
+            //startTime = time_us_32();
+            startTime = to_ms_since_boot(get_absolute_time());
         }
-    }
 
-    //Initialise basic values
-    startTime = 0;
-    endTime = 0;
-    pulseWidth = 0;
-    isBlackBar = false;
-    //Threshold for thickness
-    //Threshold in us
-    threshold = 50000;
+        tight_loop_contents();
+    };
 
-    int barsCount = 0;
-    uint32_t pulseArray[47][2];
-
-    while (1)
-    {
-        //Read value sensed
-        sensorValue = adc_read();
-        //printf("Sensor Reading: %d\n", sensorValue);
-        int colour = checkSurfaceColour(sensorValue);
-        sleep_ms(1);
-        if(barcodeCount <= 47){
-            //Start scanning black
-            if(colour == 1 && isBlackBar == false){
-                endTime = time_us_32();
-                //White space scanned completed
-                pulseWidth = endTime - startTime;
-                pulseArray[barsCount][0] = pulseWidth;
-                pulseArray[barsCount][1] = 0;
-                barsCount++;
-                
-                if(pulseWidth > 1000000){
-                    sensingBarcode = true;
-                    barcodeCount = 0;
-                    
-                    
-                    //Restarting Barcode reading              
-                    for(int i = 0; i < barsCount; i++){
-                        pulseArray[i][0] = 0;
-                        pulseArray[i][1] = 0;
-                    }
-
-                    barsCount = 0;
-                    printf("Restarting Barcode Reading.\n");
-                }
-
-                isBlackBar = true;
-                startTime = time_us_32();
-            }
-            //Start scanning white space
-            else if(colour == 0 && isBlackBar == true){
-                endTime = time_us_32();
-                //Black bar scanned completed
-                pulseWidth = endTime - startTime;
-                pulseArray[barsCount][0] = pulseWidth;
-                pulseArray[barsCount][1] = 1;
-                barsCount++;
-                if(pulseWidth > 1000000){
-                    sensingBarcode = true;
-                    barcodeCount = 0;
-                    //Restarting Barcode reading
-                    for(int i = 0; i < barsCount; i++){
-                        pulseArray[i][0] = 0;
-                        pulseArray[i][1] = 0;
-                    }
-
-                    barsCount = 0;
-                }
-
-                isBlackBar = false;
-                startTime = time_us_32();
-            }
-
-        }
-        else{
-            
-            uint32_t median = findThreshold(pulseArray, barsCount);
-            int barcode[BARCODE_SIZE];
-            int i = 0;
-            while (true)
-            {
-                if(i <= 47){
-                    //If White
-                    if(pulseArray[i][1] == 0){
-                        if(pulseArray[i][0] < median){
-                            //Thin
-                            barcode[i] = 0;
-                            i++;
-                            continue;
-                        }
-                        else{
-                            //Thick
-                            for (int j = 0; j < 3; j++)
-                            {
-                                barcode[i] = 0;
-                                i++;
-                            }
-                            continue;
-                        }
-                    }
-                    //If Black
-                    else if(pulseArray[i][1] == 1){
-                        if(pulseArray[i][0] < median){
-                            //Thin
-                            barcode[i] = 1;
-                            i++;
-                            continue;
-                        }
-                        else{
-                            //Thick
-                            for (int j = 0; j < 3; j++)
-                            {
-                                barcode[i] = 1;
-                                i++;
-                            }
-                            continue;
-                        }
-                    }
-                }
-                else{
-                    break;
-                }
-            }
-            for(int loop = 0; loop < BARCODE_SIZE - 1; loop++){
-                printf("%d", barcode[loop]);
-            }
-
-            printf("%d", barcode[BARCODE_SIZE -1]);
-            
-            //Check if barcode is A
-            int ifA = checkIfA(barcode, barLetterA);
-            if(ifA == 1){
-                //Print error message
-                printf("Error with reading barcode.\n");
-            }
-            else{
-                //Barcode successfully read
-                printf("Barcode read. Letter is A.\n");
-            }
-            barcodeCount = 0;
-            //Restarting Barcode reading              
-            for(int i = 0; i < barsCount; i++){
-                pulseArray[i][0] = 0;
-                pulseArray[i][1] = 0;
-            }
-            barsCount = 0;
-        }
-    }
-
-    return 0;
-
-}
+    return 0
+};
 
 
+// static const char *gpio_irq_str[] = {
+//         "LEVEL_LOW",  // 0x1
+//         "LEVEL_HIGH", // 0x2
+//         "EDGE_FALL",  // 0x4
+//         "EDGE_RISE"   // 0x8
+// };
+
+// void gpio_event_string(char *buf, uint32_t events) {
+//     for (uint i = 0; i < 4; i++) {
+//         uint mask = (1 << i);
+//         if (events & mask) {
+//             // Copy this event string into the user string
+//             const char *event_str = gpio_irq_str[i];
+//             while (*event_str != '\0') {
+//                 *buf++ = *event_str++;
+//             }
+//             events &= ~mask;
+
+//             // If more events add ", "
+//             if (events) {
+//                 *buf++ = ',';
+//                 *buf++ = ' ';
+//             }
+//         }
+//     }
+//     *buf++ = '\0';
+// };
