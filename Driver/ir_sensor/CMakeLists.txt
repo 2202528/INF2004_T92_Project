@@ -13,4 +13,5 @@ pico_add_extra_outputs(ir_sensor)
 # add url via pico_set_program_url
 example_auto_set_url(ir_sensor)
 
-pico_enable_stdio_usb(ir_sensor)
+pico_enable_stdio_usb(ir_sensor 1)
+

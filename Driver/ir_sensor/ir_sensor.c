@@ -8,7 +8,7 @@
 #include <string.h>
 #include <math.h>
 
-#define GPIO_PIN 26
+#define GPIO_PIN 2
 #define WHITE_THRESHOLD 400
 #define BLACK_THRESHOLD 3000
 
@@ -16,8 +16,8 @@
 #define INTERRUPT_LIMIT 30
 #define CHAR_LEN 29
 
-uint32_t edgeRise = 0x8u;
-uint32_t edgeFall = 0x4u;
+int edgeRise = 8;
+int edgeFall = 4;
 
 uint startTime = 0;
 uint runningTime = 0;
@@ -42,7 +42,7 @@ uint32_t barcodeIndex = 0;
 //Stopwatch will run at the first bar, will end at end of barcode
 volatile bool stopwatchRunning = false;
 volatile bool readingBarcode = false;
-volatile bool completeBarcode = false;
+volatile bool prevStateWhite = true;
 
 //Thick  Bar = 3
 //Thin  Bar = 1
@@ -535,29 +535,42 @@ void gpio_callback(uint gpio, uint32_t events){
     //uint32_t edgeRise = 0x8u;
     //uint32_t edgeFall = 0x4u;
 
+        
+
+        // if(gpio == GPIO_PIN){
+        //         //If High, True, thus White
+                  
+                
+        // }
     //The first interrupt is falling edge from HIGH to LOW
     //The last interrupt is rising edge from LOW back to HIGH
 
+        //If black meaning edgeFall
+    bool whiteBool = gpio_get(GPIO_PIN);
+    bool blackBool = !whiteBool;
+
     printf("Interrupt Occured!\n");
 
-    if(events == edgeFall && readingBarcode == false){
+    if(prevStateWhite && readingBarcode == false && blackBool){
         //FROM HIGH TO LOW
         //From White to Black
         //Black Timing Starts
         //Barcode reading starts
         readingBarcode = true;
+        prevStateWhite = false;
         printf("Barcode Reading Started\n");
         //interruptNum = 0;
         //interruptNum = interruptNum + 1;
         startTime = to_ms_since_boot(get_absolute_time());
     }
-    else if(events == edgeFall && readingBarcode == true){
+    else if(prevStateWhite && readingBarcode == true && blackBool){
         //FROM HIGH TO LOW
         //From White to Black
         //White Timing Ends
         //Black Timing Starts
         if(stopwatchRunning){
             runningTime = to_ms_since_boot(get_absolute_time());
+            prevStateWhite = false;
             barcodeTimings[barcodeIndex][0] = 0;
             barcodeTimings[barcodeIndex][1] = runningTime - startTime;
             startTime = runningTime;
@@ -574,7 +587,7 @@ void gpio_callback(uint gpio, uint32_t events){
         }
 
     }
-    else if(events == edgeRise && readingBarcode == true){
+    else if(!prevStateWhite && readingBarcode == true && whiteBool){
         //check InterruptNum or timingindex
         //FROM LOW TO HIGH
         //From Black to White
@@ -582,6 +595,7 @@ void gpio_callback(uint gpio, uint32_t events){
         //White Timing Starts
         if(stopwatchRunning){
             runningTime = to_ms_since_boot(get_absolute_time());
+            prevStateWhite = true;
             barcodeTimings[barcodeIndex][0] = 1;
             barcodeTimings[barcodeIndex][1] = runningTime - startTime;
             startTime = runningTime;
@@ -593,7 +607,7 @@ void gpio_callback(uint gpio, uint32_t events){
                 stopwatchRunning = false;
                 readingBarcode = false;
                 //completeBarcode = true;
-
+                prevStateWhite = true;
                 processArray(barcodeTimings, barcodeArray);
                 char data = readBarcode(barcodeArray);
                 if(strcmp(data, "1") == 0){
@@ -629,22 +643,26 @@ void gpio_callback(uint gpio, uint32_t events){
 int main() {
     stdio_init_all();
 
-    printf("Hello GPIO IRQ\n");
-    printf("Hello Timer!\n");
-
+    //printf("Hello GPIO IRQ\n");
+//     printf("Hello Timer!\n");
+//     printf("Hello Timer!\n");
     gpio_set_dir(GPIO_PIN, GPIO_IN);
-    gpio_set_pulls(GPIO_PIN, true, false);
+    //gpio_set_pulls(GPIO_PIN, true, false);
+    gpio_pull_up(GPIO_PIN);
+
 
     //Rising Edge / Edge Rise = 0x8u
     //Falling Edge / Edge Fall = 0x4u
 
     gpio_set_irq_enabled_with_callback(GPIO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 
+    //irq_set_enabled(GPIO_PIN, true);
     // Wait forever
     while (1){
         if(!stopwatchRunning && readingBarcode == false){
             stopwatchRunning = true;
             barcodeIndex = 0;
+            prevStateWhite = true;
             //startTime = time_us_32();
             startTime = to_ms_since_boot(get_absolute_time());
         }
