@@ -1,7 +1,12 @@
+
 #include <stdio.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/timer.h"
+#include <ctype.h>
+#include <string.h>
+#include <math.h>
 
 #define GPIO_PIN 26
 #define WHITE_THRESHOLD 400
@@ -25,9 +30,9 @@ int barcodeArray[CHAR_LEN]
 0,
 0,0,0,0,0,0,0,0,0,
 0,
-0,0,0,0,0,0,0,0,0}
+0,0,0,0,0,0,0,0,0};
 
-uint32_t barcodeTimings[CHAR_LEN][];
+uint32_t barcodeTimings[CHAR_LEN][2];
 //barcodeTimings[i][0] = black or white
 //Black = 1, White = 0
 //barcodeTimings[i][1] = timing;
@@ -49,12 +54,12 @@ volatile bool completeBarcode = false;
 //Thick White Bar = 2
 //Thin White Bar = 3
 
-const int barLetterA[INTERRUPT_LIMIT - 1] 
-= {1,2,1,0,3,0,3,0,1,
-0,
-3,0,1,0,1,2,1,0,3,
-0,
-1,2,1,0,3,0,3,0,1}
+// const int barLetterA[INTERRUPT_LIMIT - 1] 
+// = {1,2,1,0,3,0,3,0,1,
+// 0,
+// 3,0,1,0,1,2,1,0,3,
+// 0,
+// 1,2,1,0,3,0,3,0,1};
 
 //THIN-WHITE: 0 (Binary:0)
 //THIN-BLACK: 1 (Binary:1)
@@ -66,7 +71,7 @@ typedef struct{
 } BarLetter;
 
 //0-25, size = 26
-enum BarLetters{
+enum BarLetter{
         A,
         B,
         C,
@@ -93,7 +98,7 @@ enum BarLetters{
         X,
         Y,
         Z
-}
+};
 
 BarLetter barLetters[]{
     //* = 1 000 1 0 111 0 111 0 1
@@ -360,72 +365,97 @@ BarLetter barLetters[]{
             0,
             1,2,1,0,3,0,3,0,1
     }
-}
+};
 
 char barLetterToChar(enum BarLetters letter){
         switch (letter)
         {
-        case A: return "A";
-        case B: return "B";
-        case C: return "C";
-        case D: return "D";
-        case E: return "E";
-        case F: return "F";
-        case G: return "G";
-        case H: return "H";
-        case I: return "I";
-        case J: return "J";
-        case K: return "K";
-        case L: return "L";
-        case M: return "M";
-        case N: return "N";
-        case O: return "O";
-        case P: return "P";
-        case Q: return "Q";
-        case R: return "R";
-        case S: return "S";
-        case T: return "T";
-        case U: return "U";
-        case V: return "V";
-        case W: return "W";
-        case X: return "X";
-        case Y: return "Y";
-        case Z: return "Z";
+        case A: return 'A';
+        case B: return 'B';
+        case C: return 'C';
+        case D: return 'D';
+        case E: return 'E';
+        case F: return 'F';
+        case G: return 'G';
+        case H: return 'H';
+        case I: return 'I';
+        case J: return 'J';
+        case K: return 'K';
+        case L: return 'L';
+        case M: return 'M';
+        case N: return 'N';
+        case O: return 'O';
+        case P: return 'P';
+        case Q: return 'Q';
+        case R: return 'R';
+        case S: return 'S';
+        case T: return 'T';
+        case U: return 'U';
+        case V: return 'V';
+        case W: return 'W';
+        case X: return 'X';
+        case Y: return 'Y';
+        case Z: return 'Z';
         }
-}
+};
  
+// bool barcodeMatch(int array[CHAR_LEN], barLetter letter){
+//     const int* letterArray = (const int*)&letter;
+
+//     for(int i = 0; i < CHAR_LEN; i++){
+//         if(array[i] != (*letterArray)[i]){
+//                 return false;
+//         }
+//     }
+
+//     return true;
+
+// }
 
 enum BarLetters barcodeMatch(int array[CHAR_LEN]) {
-
+    // Loop through barLetters array
     for (int i = 0; i < sizeof(barLetters) / sizeof(barLetters[0]); i++) {
-
+        // Loop through the values array inside each BarLetter
         int matchCount = 0;
-        for (int j = 0; j < sizeof(barLetters[i].values) / sizeof(barLetters[i].values[0]); j++) {
-            if (barLetters[i].values[j] == inputArray[j]) {
+        for (int j = 0; j < sizeof(barLetters[i].letter) / sizeof(barLetters[i].letter[0]); j++) {
+            if (barLetters[i].letter[j] == array[j]) {
                 matchCount++;
             }
         }
 
-        if (matchCount == sizeof(barLetters[i].values) / sizeof(barLetters[i].values[0])) {
+        // Check if all elements match
+        if (matchCount == sizeof(barLetters[i].letter) / sizeof(barLetters[i].letter[0])) {
             return (enum BarLetters)i;
         }
     }
 
-
+    // Return a default value if no match is found
     return (enum BarLetters)-1;
-}
+};
 
 
 char readBarcode(int array[CHAR_LEN]){
         BarLetters letter = barcodeMatch(array);
         if(letter == -1){
-                return "1";
+                return '1';
         }
         else{
                 char barChar = barLetterToChar(letter);
                 return barChar;
         }
-}
+
+        // for(int i = 0; i < BARLETTER_COUNT; i++){
+        //         barLetter letter = (barLetter)i;
+        //         bool match = barcodeMatch(array, letter);
+        //         if(match){
+        //                 char barChar = barLetterToChar(letter);
+        //                 return barChar;
+        //         }
+        //         else{
+        //                return "1"; 
+        //         }
+        // }
+};
 
 void copyArray(uint32_t original[CHAR_LEN][], uint32_t copy[CHAR_LEN][]){
         int len = CHAR_LEN;
@@ -474,9 +504,9 @@ uint32_t findThreshold(uint32_t arr[CHAR_LEN][] ){
 //To Process Array, first must check if considered long and short timings
 //Then check if considered thin or thick bars and what colour
 //Then can assign number 0-3 to the specific bar/array timing
-void processArray(uint32_t array[CHAR_LEN][], int barcodeArr[CHAR_LEN]){
-        int barArray[CHAR_LEN];
-        uint32_t copy[CHARLEN][];
+void processArray(uint32_t array[CHAR_LEN][2], int barcodeArr[CHAR_LEN]){
+        //int barArray[CHAR_LEN];
+        uint32_t copy[CHAR_LEN][2];
         copyArray(array, copy);
         uint32_t median = findThreshold(copy);
 
@@ -585,11 +615,11 @@ void gpio_callback(uint gpio, uint32_t events){
             if(barcodeIndex == CHAR_LEN){
                 stopwatchRunning = false;
                 readingBarcode = false;
-                completeBarcode = true;
+                //completeBarcode = true;
 
                 processArray(barcodeTimings, barcodeArray);
                 char data = readBarcode(barcodeArray);
-                if(data == "1"){
+                if(strcmp(data, "1") == 0){
                         printf("Error reading barcode. Try again!\n");
                 }
                 else{
@@ -600,7 +630,6 @@ void gpio_callback(uint gpio, uint32_t events){
                 
                 
             }
-            //interruptNum++;
         }
 
         
@@ -633,37 +662,6 @@ int main() {
     //Falling Edge / Edge Fall = 0x4u
 
     gpio_set_irq_enabled_with_callback(GPIO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
-    //gpio_set_irq_enabled_with_callback(GPIO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
-    // // Call alarm_callback in 2 seconds
-    // add_alarm_in_ms(2000, alarm_callback, NULL, false);
-
-    // // Wait for alarm callback to set timer_fired
-    // while (!timer_fired) {
-    //     tight_loop_contents();
-    // }
-
-    // // Create a repeating timer that calls repeating_timer_callback.
-    // // If the delay is > 0 then this is the delay between the previous callback ending and the next starting.
-    // // If the delay is negative (see below) then the next call to the callback will be exactly 500ms after the
-    // // start of the call to the last callback
-    // struct repeating_timer timer;
-    // add_repeating_timer_ms(500, repeating_timer_callback, NULL, &timer);
-    // sleep_ms(3000);
-    // bool cancelled = cancel_repeating_timer(&timer);
-    // printf("cancelled... %d\n", cancelled);
-    // sleep_ms(2000);
-
-    // // Negative delay so means we will call repeating_timer_callback, and call it again
-    // // 500ms later regardless of how long the callback took to execute
-    // add_repeating_timer_ms(-500, repeating_timer_callback, NULL, &timer);
-    // sleep_ms(3000);
-    // cancelled = cancel_repeating_timer(&timer);
-    // printf("cancelled... %d\n", cancelled);
-    // sleep_ms(2000);
-    // printf("Done\n");
-    // return 0;
-    
-    
 
     // Wait forever
     while (1){
@@ -677,34 +675,5 @@ int main() {
         tight_loop_contents();
     };
 
-    return 0
+    return 0;
 };
-
-
-// static const char *gpio_irq_str[] = {
-//         "LEVEL_LOW",  // 0x1
-//         "LEVEL_HIGH", // 0x2
-//         "EDGE_FALL",  // 0x4
-//         "EDGE_RISE"   // 0x8
-// };
-
-// void gpio_event_string(char *buf, uint32_t events) {
-//     for (uint i = 0; i < 4; i++) {
-//         uint mask = (1 << i);
-//         if (events & mask) {
-//             // Copy this event string into the user string
-//             const char *event_str = gpio_irq_str[i];
-//             while (*event_str != '\0') {
-//                 *buf++ = *event_str++;
-//             }
-//             events &= ~mask;
-
-//             // If more events add ", "
-//             if (events) {
-//                 *buf++ = ',';
-//                 *buf++ = ' ';
-//             }
-//         }
-//     }
-//     *buf++ = '\0';
-// };
