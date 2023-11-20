@@ -66,12 +66,14 @@ volatile bool completeBarcode = false;
 //THICK-WHITE: 2 (Binary: 000)
 //THICK-BLACK: 3 (Binary: 111)
 
-typedef struct{
+typedef struct BarLetter BarLetter;
+
+struct BarLetter{
         int letter[CHAR_LEN];
-} BarLetter;
+};
 
 //0-25, size = 26
-enum BarLetter{
+enum BarLetters{
         A,
         B,
         C,
@@ -100,26 +102,26 @@ enum BarLetter{
         Z
 };
 
-BarLetter barLetters[]{
-    //* = 1 000 1 0 111 0 111 0 1
-    //* = 1 2   1 0 3   0 3   0 1  
+BarLetter barLetters[26] = {
+    // = 1 000 1 0 111 0 111 0 1
+    // = 1 2   1 0 3   0 3   0 1  
 
     //111 0 1 0 1 000 1 0 111  
     //3   0 1 0 1 2   1 0 3
 
     //A
-        {1,2,1,0,3,0,3,0,1,
-            0,
-            3,0,1,0,1,2,1,0,3,
-            0,
-            1,2,1,0,3,0,3,0,1
+        [A]={1,2,1,0,3,0,3,0,1,
+                0,
+                3,0,1,0,1,2,1,0,3,
+                0,
+                1,2,1,0,3,0,3,0,1
         },
 
     //1 0 111 0 1 000 1 0 111
     //1 0 3   0 1 2   1 0 3 
 
     //B
-    {1,2,1,0,3,0,3,0,1,
+    [B]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,3,0,1,2,1,0,3,
             0,
@@ -129,7 +131,7 @@ BarLetter barLetters[]{
     //111 0 111 0 1 000 1 0 1  
     //3   0 3   0 1 2   1 0 1
     //C
-    {1,2,1,0,3,0,3,0,1,
+    [C]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,3,0,1,2,1,0,1,
             0,
@@ -139,7 +141,7 @@ BarLetter barLetters[]{
     //1 0 1 0 111 000 1 0 111
     //1 0 1 0 3   2   1 0 3
     //D
-    {1,2,1,0,3,0,3,0,1,
+    [D]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,1,0,3,2,1,0,3,
             0,
@@ -149,7 +151,7 @@ BarLetter barLetters[]{
     //111 0 1 0 111 000 1 0 1
     //3   0 1 0 3   2   1 0 1
     //E
-        {1,2,1,0,3,0,3,0,1,
+        [E]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,1,0,3,2,1,0,1,
             0,
@@ -159,7 +161,7 @@ BarLetter barLetters[]{
     //1 0 111 0 111 000 1 0 1 
     //1 0 3   0 3   2   1 0 1
     //F = 
-    {1,2,1,0,3,0,3,0,1,
+    [F]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,3,0,3,2,1,0,1,
             0,
@@ -169,7 +171,7 @@ BarLetter barLetters[]{
     //1 0 1 0 1 000 111 0 111
     //1 0 1 0 1 2   3   0 3
     //G = 
-    {1,2,1,0,3,0,3,0,1,
+    [G]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,1,0,1,2,3,0,3,
             0,
@@ -179,7 +181,7 @@ BarLetter barLetters[]{
     //111 0 1 0 1 000 111 0 1
     //3   0 1 0 1 2   3   0 1
     //H = 
-    {1,2,1,0,3,0,3,0,1,
+    [H]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,1,0,1,2,3,0,1,
             0,
@@ -189,7 +191,7 @@ BarLetter barLetters[]{
     //1 0 111 0 1 000 111 0 1
     //1 0 3   0 1 2   3   0 1 
     //I = 
-    {1,2,1,0,3,0,3,0,1,
+    [I]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,3,0,1,2,3,0,1,
             0,
@@ -199,7 +201,7 @@ BarLetter barLetters[]{
     //1 0 1 0 111 000 111 0 1
     //1 0 1 0 3   2   3   0 1
     //J = 
-    {1,2,1,0,3,0,3,0,1,
+    [J]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,1,0,3,2,3,0,1,
             0,
@@ -209,7 +211,7 @@ BarLetter barLetters[]{
     //111 0 1 0 1 0 1 000 111
     //3   0 1 0 1 0 1 2   3 
     //K = 
-    {1,2,1,0,3,0,3,0,1,
+    [K]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,1,0,1,0,1,2,3,
             0,
@@ -219,7 +221,7 @@ BarLetter barLetters[]{
     //1 0 111 0 1 0 1 000 111
     //1 0 3   0 1 0 1 2   3
     //L = 
-    {1,2,1,0,3,0,3,0,1,
+    [L]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,3,0,1,0,1,2,3,
             0,
@@ -229,7 +231,7 @@ BarLetter barLetters[]{
     //111 0 111 0 1 0 1 000 1
     //3   0 3   0 1 0 1 2   1 
     //M = 
-    {1,2,1,0,3,0,3,0,1,
+    [M]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,3,0,1,0,1,2,1,
             0,
@@ -239,7 +241,7 @@ BarLetter barLetters[]{
     //1 0 1 0 111 0 1 000 111 
     //1 0 1 0 3   0 1 2   3
     //N = 
-    {1,2,1,0,3,0,3,0,1,
+    [N]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,1,0,3,0,1,2,3,
             0,
@@ -249,7 +251,7 @@ BarLetter barLetters[]{
     //111 0 1 0 111 0 1 000 1
     //3   0 1 0 3   0 1 2   1
     //O = 
-    {1,2,1,0,3,0,3,0,1,
+    [O]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,1,0,3,0,1,2,1,
             0,
@@ -259,7 +261,7 @@ BarLetter barLetters[]{
     //1 0 111 0 111 0 1 000 1 
     //1 0 3   0 3   0 1 2   1
     //P = 
-    {1,2,1,0,3,0,3,0,1,
+    [P]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,3,0,3,0,1,2,1,
             0,
@@ -269,7 +271,7 @@ BarLetter barLetters[]{
     //1 0 1 0 1 0 111 000 111
     //1 0 1 0 1 0 3   2   3
     //Q = 
-    {1,2,1,0,3,0,3,0,1,
+    [Q]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,1,0,1,0,3,2,3,
             0,
@@ -279,7 +281,7 @@ BarLetter barLetters[]{
     //111 0 1 0 1 0 111 000 1
     //3   0 1 0 1 0 3   2   1 
     //R = 
-    {1,2,1,0,3,0,3,0,1,
+    [R]={1,2,1,0,3,0,3,0,1,
             0,
             3,0,1,0,1,0,3,2,1,
             0,
@@ -289,7 +291,7 @@ BarLetter barLetters[]{
     //1 0 111 0 1 0 111 000 1
     //1 0 3   0 1 0 3   2   1
     //S = 
-    {1,2,1,0,3,0,3,0,1,
+    [S]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,3,0,1,0,3,2,1,
             0,
@@ -299,7 +301,7 @@ BarLetter barLetters[]{
     //1 0 1 0 111 0 111 000 1 
     //1 0 1 0 3   0 3   2   1
     //T = 
-    {1,2,1,0,3,0,3,0,1,
+    [T]={1,2,1,0,3,0,3,0,1,
             0,
             1,0,1,0,3,0,3,2,1,
             0,
@@ -309,7 +311,7 @@ BarLetter barLetters[]{
     //111 000 1 0 1 0 1 0 111
     //3   2   1 0 1 0 1 0 3 
     //U = 
-    {1,2,1,0,3,0,3,0,1,
+    [U]={1,2,1,0,3,0,3,0,1,
             0,
             3,2,1,0,1,0,1,0,3,
             0,
@@ -319,7 +321,7 @@ BarLetter barLetters[]{
     //1 000 111 0 1 0 1 0 111
     //1 2   3   0 1 0 1 0 3   
     //V = 
-    {1,2,1,0,3,0,3,0,1,
+    [V]={1,2,1,0,3,0,3,0,1,
             0,
             1,2,3,0,1,0,1,0,3,
             0,
@@ -329,7 +331,7 @@ BarLetter barLetters[]{
     //111 000 111 0 1 0 1 0 1
     //3   2   3   0 1 0 1 0 1 
     //W = 
-    {1,2,1,0,3,0,3,0,1,
+    [W]={1,2,1,0,3,0,3,0,1,
             0,
             3,2,3,0,1,0,1,0,1,
             0,
@@ -339,7 +341,7 @@ BarLetter barLetters[]{
     //1 000 1 0 111 0 1 0 111
     //1 2   1 0 3   0 1 0 3
     //X = 
-    {1,2,1,0,3,0,3,0,1,
+    [X]={1,2,1,0,3,0,3,0,1,
             0,
             1,2,1,0,3,0,1,0,3,
             0,
@@ -349,7 +351,7 @@ BarLetter barLetters[]{
     //111 000 1 0 111 0 1 0 1
     //3   2   1 0 3   0 1 0 1 
     //Y = 
-    {1,2,1,0,3,0,3,0,1,
+    [Y]={1,2,1,0,3,0,3,0,1,
             0,
             3,2,1,0,3,0,1,0,1,
             0,
@@ -359,7 +361,7 @@ BarLetter barLetters[]{
     //1 000 111 0 111 0 1 0 1 
     //1 2   3   0 3   0 1 0 1
     //Z = 
-    {1,2,1,0,3,0,3,0,1,
+    [Z]={1,2,1,0,3,0,3,0,1,
             0,
             1,2,3,0,3,0,1,0,1,
             0,
@@ -398,22 +400,9 @@ char barLetterToChar(enum BarLetters letter){
         case Z: return 'Z';
         }
 };
- 
-// bool barcodeMatch(int array[CHAR_LEN], barLetter letter){
-//     const int* letterArray = (const int*)&letter;
-
-//     for(int i = 0; i < CHAR_LEN; i++){
-//         if(array[i] != (*letterArray)[i]){
-//                 return false;
-//         }
-//     }
-
-//     return true;
-
-// }
 
 enum BarLetters barcodeMatch(int array[CHAR_LEN]) {
-    // Loop through barLetters array
+    // Loop through BarLetter array
     for (int i = 0; i < sizeof(barLetters) / sizeof(barLetters[0]); i++) {
         // Loop through the values array inside each BarLetter
         int matchCount = 0;
@@ -435,29 +424,17 @@ enum BarLetters barcodeMatch(int array[CHAR_LEN]) {
 
 
 char readBarcode(int array[CHAR_LEN]){
-        BarLetters letter = barcodeMatch(array);
-        if(letter == -1){
+        enum BarLetters letter = barcodeMatch(array);
+        if(letter == (enum BarLetters)-1){
                 return '1';
         }
         else{
                 char barChar = barLetterToChar(letter);
                 return barChar;
         }
-
-        // for(int i = 0; i < BARLETTER_COUNT; i++){
-        //         barLetter letter = (barLetter)i;
-        //         bool match = barcodeMatch(array, letter);
-        //         if(match){
-        //                 char barChar = barLetterToChar(letter);
-        //                 return barChar;
-        //         }
-        //         else{
-        //                return "1"; 
-        //         }
-        // }
 };
 
-void copyArray(uint32_t original[CHAR_LEN][], uint32_t copy[CHAR_LEN][]){
+void copyArray(uint32_t original[CHAR_LEN][2], uint32_t copy[CHAR_LEN][2]){
         int len = CHAR_LEN;
         int col = 2;
         for(int i = 0; i < len; i++){
@@ -467,7 +444,7 @@ void copyArray(uint32_t original[CHAR_LEN][], uint32_t copy[CHAR_LEN][]){
         }
 }
 
-void sortArray(uint32_t arr[CHAR_LEN][]) {
+void sortArray(uint32_t arr[CHAR_LEN][2]) {
     for (int i = 0; i < CHAR_LEN - 1; i++) {
         for (int j = 0; j < CHAR_LEN - i - 1; j++) {
             if (arr[j][0] > arr[j + 1][0]) {
@@ -484,7 +461,7 @@ void sortArray(uint32_t arr[CHAR_LEN][]) {
     }
 }
 
-uint32_t findThreshold(uint32_t arr[CHAR_LEN][] ){
+uint32_t findThreshold(uint32_t arr[CHAR_LEN][2] ){
     int len = CHAR_LEN;
     sortArray(arr); // Sort the array in ascending order
 
@@ -561,7 +538,7 @@ void gpio_callback(uint gpio, uint32_t events){
     //The first interrupt is falling edge from HIGH to LOW
     //The last interrupt is rising edge from LOW back to HIGH
 
-    
+    printf("Interrupt Occured!\n");
 
     if(events == edgeFall && readingBarcode == false){
         //FROM HIGH TO LOW
